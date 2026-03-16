@@ -50,10 +50,13 @@ model Node {
   name      String
   nodeType  NodeType
 
-  latitude   Float?
-  longitude  Float?
-  mileMarker String?
-  notes      String?
+  latitude       Float?
+  longitude      Float?
+  gpsSource      String?
+  gpsAccuracy    Float?
+  gpsCapturedAt  DateTime?
+  mileMarker     String?
+  notes          String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

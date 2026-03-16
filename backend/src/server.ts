@@ -3,124 +3,73 @@
 import "dotenv/config";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
+import swagger from "@fastify/swagger";
+import swaggerUI from "@fastify/swagger-ui";
+import { PrismaClient } from "@prisma/client";
+import { Pool } from "pg";
+import { PrismaPg } from "@prisma/adapter-pg";
 import { z } from "zod";
-import { prisma, pool } from "./lib/prisma";
-import { colorForStrand, bufferForStrand } from "./lib/fiber";
-import { registerSwagger } from "./plugins/swagger";
 
 console.log("SERVER RELOADED", new Date().toISOString());
 
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+});
+
+const adapter = new PrismaPg(pool);
+
+const prisma = new PrismaClient({
+  adapter,
+});
+
 const app = Fastify({ logger: true });
 
-/** -------------------- ROUTES -------------------- */
-
-app.get(
-  "/",
-  {
-    schema: {
-      tags: ["System"],
-      summary: "API root",
-      response: {
-        200: {
-          type: "object",
-          properties: {
-            name: { type: "string" },
-            ok: { type: "boolean" },
-          },
-        },
-      },
+app.register(swagger, {
+  mode: "dynamic",
+  openapi: {
+    info: {
+      title: "Fiber Ops API",
+      description: "Backend API for Fiber Ops",
+      version: "0.1.0",
     },
   },
-  async () => {
-    return { name: "Fiber Ops API", ok: true };
-  }
-);
+});
 
-app.get(
-  "/health",
-  {
-    schema: {
-      tags: ["System"],
-      summary: "Health check",
-      response: {
-        200: {
-          type: "object",
-          properties: {
-            ok: { type: "boolean" },
-          },
-        },
-      },
-    },
-  },
-  async () => {
-    return { ok: true };
-  }
-);
+app.register(swaggerUI, {
+  routePrefix: "/docs",
+});
 
-/** --- Projects --- */
-app.post(
-  "/projects",
-  {
-    schema: {
-      tags: ["Projects"],
-      summary: "Create a new project",
-      body: {
-        type: "object",
-        required: ["name"],
-        properties: {
-          name: { type: "string" },
-        },
-      },
-      response: {
-        201: {
-          type: "object",
-          properties: {
-            id: { type: "string" },
-            name: { type: "string" },
-          },
-        },
-      },
-    },
-  },
-  async (req, reply) => {
-    const body = z.object({ name: z.string().min(1) }).parse(req.body);
+/** -------------------- SYSTEM -------------------- */
 
-    const project = await prisma.project.create({
-      data: { name: body.name },
-    });
+app.get("/", async () => {
+  return { name: "Fiber Ops API", ok: true };
+});
 
-    reply.code(201).send(project);
-  }
-);
+app.get("/health", async () => {
+  return { ok: true };
+});
 
-app.get(
-  "/projects",
-  {
-    schema: {
-      tags: ["Projects"],
-      summary: "List projects",
-      response: {
-        200: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              id: { type: "string" },
-              name: { type: "string" },
-              createdAt: { type: "string" },
-              updatedAt: { type: "string" },
-            },
-          },
-        },
-      },
-    },
-  },
-  async () => {
-    return prisma.project.findMany({
-      orderBy: { createdAt: "desc" },
-    });
-  }
-);
+/** -------------------- PROJECTS -------------------- */
+
+app.post("/projects", async (req, reply) => {
+  const body = z
+    .object({
+      name: z.string().min(1),
+    })
+    .parse(req.body);
+
+  const project = await prisma.project.create({
+    data: { name: body.name },
+  });
+
+  reply.code(201).send(project);
+});
+
+app.get("/projects", async () => {
+  return prisma.project.findMany({
+    orderBy: { createdAt: "desc" },
+  });
+});
 
 app.delete("/projects/:projectId", async (req, reply) => {
   const params = z.object({ projectId: z.string().uuid() }).parse(req.params);
@@ -138,7 +87,11 @@ app.delete("/projects/:projectId", async (req, reply) => {
 
 app.patch("/projects/:projectId", async (req, reply) => {
   const params = z.object({ projectId: z.string().uuid() }).parse(req.params);
-  const body = z.object({ name: z.string().min(1) }).parse(req.body);
+  const body = z
+    .object({
+      name: z.string().min(1),
+    })
+    .parse(req.body);
 
   try {
     const updated = await prisma.project.update({
@@ -210,7 +163,8 @@ app.get("/projects/:projectId/summary", async (req, reply) => {
   });
 });
 
-/** --- Nodes --- */
+/** -------------------- NODES -------------------- */
+
 const nodeTypeEnum = z.enum([
   "CABINET",
   "SPLICE_CLOSURE",
@@ -227,13 +181,21 @@ app.post("/nodes", async (req, reply) => {
       nodeType: nodeTypeEnum,
       latitude: z.number().optional(),
       longitude: z.number().optional(),
+      gpsSource: z.string().optional(),
+      gpsAccuracy: z.number().optional(),
+      gpsCapturedAt: z.string().datetime().optional(),
       mileMarker: z.string().optional(),
       notes: z.string().optional(),
     })
     .parse(req.body);
 
   const node = await prisma.node.create({
-    data: body,
+    data: {
+      ...body,
+      gpsCapturedAt: body.gpsCapturedAt
+        ? new Date(body.gpsCapturedAt)
+        : undefined,
+    },
   });
 
   reply.code(201).send(node);
@@ -316,6 +278,9 @@ app.patch("/nodes/:nodeId", async (req, reply) => {
       nodeType: nodeTypeEnum.optional(),
       latitude: z.number().optional(),
       longitude: z.number().optional(),
+      gpsSource: z.string().optional(),
+      gpsAccuracy: z.number().optional(),
+      gpsCapturedAt: z.string().datetime().optional(),
       mileMarker: z.string().optional(),
       notes: z.string().optional(),
     })
@@ -327,7 +292,12 @@ app.patch("/nodes/:nodeId", async (req, reply) => {
   try {
     const updated = await prisma.node.update({
       where: { id: params.nodeId },
-      data: body,
+      data: {
+        ...body,
+        gpsCapturedAt: body.gpsCapturedAt
+          ? new Date(body.gpsCapturedAt)
+          : undefined,
+      },
     });
 
     return reply.send(updated);
@@ -360,7 +330,31 @@ app.delete("/nodes/:nodeId", async (req, reply) => {
   }
 });
 
-/** --- Cables + auto-generate fibers --- */
+/** -------------------- CABLES + AUTO-GENERATE FIBERS -------------------- */
+
+const fiberColors12 = [
+  "Blue",
+  "Orange",
+  "Green",
+  "Brown",
+  "Slate",
+  "White",
+  "Red",
+  "Black",
+  "Yellow",
+  "Violet",
+  "Rose",
+  "Aqua",
+];
+
+function colorForStrand(strandNumber: number) {
+  return fiberColors12[(strandNumber - 1) % 12];
+}
+
+function bufferForStrand(strandNumber: number) {
+  return Math.floor((strandNumber - 1) / 12) + 1;
+}
+
 app.post("/cables", async (req, reply) => {
   const body = z
     .object({
@@ -425,51 +419,6 @@ app.get("/cables", async (req) => {
   });
 });
 
-app.patch("/cables/:cableId", async (req, reply) => {
-  const params = z.object({ cableId: z.string().uuid() }).parse(req.params);
-
-  const body = z
-    .object({
-      name: z.string().min(1).optional(),
-      cableType: z.enum(["BACKBONE", "SPUR", "DROP"]).optional(),
-      fromNodeId: z.string().uuid().optional(),
-      toNodeId: z.string().uuid().optional(),
-      routeNotes: z.string().optional(),
-    })
-    .refine((v) => Object.keys(v).length > 0, {
-      message: "At least one field must be provided",
-    })
-    .parse(req.body);
-
-  try {
-    const updated = await prisma.cable.update({
-      where: { id: params.cableId },
-      data: body,
-      select: {
-        id: true,
-        projectId: true,
-        name: true,
-        cableType: true,
-        fiberCount: true,
-        fromNodeId: true,
-        toNodeId: true,
-        routeNotes: true,
-      },
-    });
-
-    return reply.send(updated);
-  } catch (err: any) {
-    if (err?.code === "P2025") {
-      return reply.code(404).send({
-        ok: false,
-        message: "Cable not found",
-      });
-    }
-
-    throw err;
-  }
-});
-
 app.get("/cables/:cableId/fibers", async (req, reply) => {
   const parsed = z.object({ cableId: z.string().uuid() }).safeParse(req.params);
 
@@ -492,28 +441,54 @@ app.get("/cables/:cableId/fibers", async (req, reply) => {
   });
 });
 
-app.delete("/cables/:cableId", async (req, reply) => {
+app.patch("/cables/:cableId", async (req, reply) => {
   const params = z.object({ cableId: z.string().uuid() }).parse(req.params);
 
+  const body = z
+    .object({
+      name: z.string().min(1).optional(),
+      cableType: z.enum(["BACKBONE", "SPUR", "DROP"]).optional(),
+      fiberCount: z.number().int().positive().optional(),
+      fromNodeId: z.string().uuid().nullable().optional(),
+      toNodeId: z.string().uuid().nullable().optional(),
+      routeNotes: z.string().optional(),
+    })
+    .refine((v) => Object.keys(v).length > 0, {
+      message: "At least one field must be provided",
+    })
+    .parse(req.body);
+
   try {
-    await prisma.cable.delete({
+    const updated = await prisma.cable.update({
       where: { id: params.cableId },
+      data: body,
     });
 
-    return reply.code(204).send();
+    return reply.send(updated);
   } catch (err: any) {
     if (err?.code === "P2025") {
-      return reply.code(404).send({
-        ok: false,
-        message: "Cable not found",
-      });
+      return reply.code(404).send({ ok: false, message: "Cable not found" });
     }
-
     throw err;
   }
 });
 
-/** --- Trays (SpliceTray) --- */
+app.delete("/cables/:cableId", async (req, reply) => {
+  const params = z.object({ cableId: z.string().uuid() }).parse(req.params);
+
+  try {
+    await prisma.cable.delete({ where: { id: params.cableId } });
+    return reply.code(204).send();
+  } catch (err: any) {
+    if (err?.code === "P2025") {
+      return reply.code(404).send({ ok: false, message: "Cable not found" });
+    }
+    throw err;
+  }
+});
+
+/** -------------------- TRAYS -------------------- */
+
 app.post("/nodes/:nodeId/trays", async (req, reply) => {
   const params = z.object({ nodeId: z.string().uuid() }).parse(req.params);
   const body = z
@@ -532,6 +507,7 @@ app.post("/nodes/:nodeId/trays", async (req, reply) => {
 
 app.get("/nodes/:nodeId/trays", async (req, reply) => {
   const parsed = z.object({ nodeId: z.string().uuid() }).safeParse(req.params);
+
   if (!parsed.success) {
     return reply.code(400).send({ ok: false, message: "Invalid nodeId" });
   }
@@ -544,7 +520,8 @@ app.get("/nodes/:nodeId/trays", async (req, reply) => {
   });
 });
 
-/** --- Bulk splices --- */
+/** -------------------- BULK SPLICES -------------------- */
+
 app.post("/trays/:trayId/splices/bulk", async (req, reply) => {
   const params = z.object({ trayId: z.string().uuid() }).parse(req.params);
   const body = z
@@ -587,7 +564,8 @@ app.post("/trays/:trayId/splices/bulk", async (req, reply) => {
   reply.code(201).send({ count: created.length, splices: created });
 });
 
-/** --- Trace a fiber through splices (simple graph walk) --- */
+/** -------------------- TRACE FIBER -------------------- */
+
 app.get("/trace/fiber/:fiberId", async (req, reply) => {
   const parsed = z.object({ fiberId: z.string().uuid() }).safeParse(req.params);
 
@@ -641,11 +619,9 @@ app.get("/trace/fiber/:fiberId", async (req, reply) => {
   return reply.send({ startFiberId: fiberId, hops });
 });
 
-/** -------------------- STARTUP / SHUTDOWN -------------------- */
+/** -------------------- STARTUP -------------------- */
 
 async function start() {
-  await registerSwagger(app);
-
   const allowedOrigins = ["http://localhost:3000", "http://127.0.0.1:3000"];
 
   await app.register(cors, {

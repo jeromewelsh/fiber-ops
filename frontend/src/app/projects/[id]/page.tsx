@@ -1,4 +1,3 @@
-// src/app/projects/[id]/page.tsx
 import { API_BASE } from "@/lib/config";
 import Link from "next/link";
 import NodePanel from "./node-panel";
@@ -15,9 +14,9 @@ type Summary = {
 export default async function ProjectDetail({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
-  const { id } = params;
+  const { id } = await params;
 
   let data: Summary | null = null;
   let error = "";
@@ -34,46 +33,56 @@ export default async function ProjectDetail({
     }
 
     data = json;
-  } catch (e: any) {
-    error = e?.message ?? "Failed to load project";
+  } catch (err: any) {
+    error = err?.message ?? "Failed to load project";
   }
 
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-black">
-      <main className="w-full max-w-4xl mx-auto p-12">
-        <Link href="/" className="text-sm opacity-70 hover:underline">
-          ← Back
-        </Link>
+    <main style={{ padding: 24, fontFamily: "Arial, sans-serif" }}>
+      <div style={{ marginBottom: 16 }}>
+        <Link href="/">← Back</Link>
+      </div>
 
-        {error && (
-          <div className="mt-6 rounded border p-3 text-red-500 dark:border-white/20">
-            {error}
-          </div>
-        )}
+      {error ? (
+        <div
+          style={{
+            padding: 12,
+            border: "1px solid crimson",
+            background: "#ffe6e6",
+            color: "#900",
+          }}
+        >
+          Error: {error}
+        </div>
+      ) : !data ? (
+        <p>Loading...</p>
+      ) : (
+        <>
+          <h1 style={{ marginBottom: 8 }}>{data.project?.name}</h1>
 
-        {!error && data?.project && data?.counts && (
-          <>
-            <h1 className="mt-4 text-3xl font-semibold text-black dark:text-white">
-              {data.project.name}
-            </h1>
+          <p style={{ color: "#555", marginBottom: 16 }}>
+            Nodes: {data.counts?.nodes ?? 0} | Cables: {data.counts?.cables ?? 0}
+            {" | "}Total Fibers: {data.counts?.totalFibers ?? 0}
+          </p>
 
-            <div className="mt-2 text-xs opacity-60">
-              Created: {new Date(data.project.createdAt).toLocaleString()}
-            </div>
+          <NodePanel projectId={id} initialNodes={data.nodes ?? []} />
 
-            <div className="mt-4 rounded border p-3 dark:border-white/20 text-sm">
-              <div>Nodes: {data.counts.nodes}</div>
-              <div>Cables: {data.counts.cables}</div>
-              <div>Total fibers: {data.counts.totalFibers}</div>
-            </div>
-
-            {/* Nodes UI (Create + List + Delete) */}
-            <div className="mt-8">
-              <NodePanel projectId={data.project.id} />
-            </div>
-          </>
-        )}
-      </main>
-    </div>
+          <section style={{ marginTop: 32 }}>
+            <h2>Cables</h2>
+            {!data.cables?.length ? (
+              <p>No cables yet.</p>
+            ) : (
+              <ul>
+                {data.cables.map((cable: any) => (
+                  <li key={cable.id}>
+                    <strong>{cable.name}</strong> — {cable.cableType} — {cable.fiberCount}F
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </>
+      )}
+    </main>
   );
 }
