@@ -1,0 +1,156 @@
+// backend/prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum NodeType {
+  CABINET
+  SPLICE_CLOSURE
+  HANDHOLE
+  POLE
+  BUILDING
+}
+
+enum CableType {
+  BACKBONE
+  SPUR
+  DROP
+}
+
+enum FiberStatus {
+  DARK
+  LIT
+  RESERVED
+  BROKEN
+}
+
+enum SpliceType {
+  FUSION
+  MECH
+}
+
+model Project {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  nodes  Node[]
+  cables Cable[]
+}
+
+model Node {
+  id        String   @id @default(uuid())
+  projectId String
+  name      String
+  nodeType  NodeType
+
+  latitude   Float?
+  longitude  Float?
+  mileMarker String?
+  notes      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  trays      SpliceTray[]
+  fromCables Cable[]      @relation("CableFromNode")
+  toCables   Cable[]      @relation("CableToNode")
+
+  @@index([projectId])
+  @@index([name])
+}
+
+model Cable {
+  id         String    @id @default(uuid())
+  projectId  String
+  name       String
+  cableType  CableType
+  fiberCount Int
+  routeNotes String?
+
+  fromNodeId String?
+  toNodeId   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  fromNode Node? @relation("CableFromNode", fields: [fromNodeId], references: [id], onDelete: SetNull)
+  toNode   Node? @relation("CableToNode", fields: [toNodeId], references: [id], onDelete: SetNull)
+
+  fibers Fiber[]
+
+  @@unique([projectId, name])
+  @@index([projectId])
+  @@index([fromNodeId])
+  @@index([toNodeId])
+}
+
+model Fiber {
+  id           String      @id @default(uuid())
+  cableId      String
+  strandNumber Int
+  bufferNumber Int
+  color        String
+  status       FiberStatus @default(DARK)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cable Cable @relation(fields: [cableId], references: [id], onDelete: Cascade)
+
+  splicesA Splice[] @relation("SpliceA")
+  splicesB Splice[] @relation("SpliceB")
+
+  @@unique([cableId, strandNumber])
+  @@index([cableId])
+}
+
+model SpliceTray {
+  id     String  @id @default(uuid())
+  nodeId String
+  name   String
+  notes  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  node    Node     @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  splices Splice[]
+
+  @@unique([nodeId, name])
+  @@index([nodeId])
+}
+
+model Splice {
+  id       String @id @default(uuid())
+  trayId   String
+  aFiberId String
+  bFiberId String
+
+  position   String?
+  spliceType SpliceType @default(FUSION)
+  lossDb     Decimal?
+  notes      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tray   SpliceTray @relation(fields: [trayId], references: [id], onDelete: Cascade)
+  aFiber Fiber      @relation("SpliceA", fields: [aFiberId], references: [id], onDelete: Cascade)
+  bFiber Fiber      @relation("SpliceB", fields: [bFiberId], references: [id], onDelete: Cascade)
+
+  @@unique([trayId, aFiberId, bFiberId])
+  @@index([trayId])
+  @@index([aFiberId])
+  @@index([bFiberId])
+}
