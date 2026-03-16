@@ -6,14 +6,22 @@ import { API_BASE } from "@/lib/config";
 type Cable = {
   id: string;
   name: string;
-  type: string;
+  cableType: string;
   fiberCount: number;
 };
 
-export default function CablePanel({ projectId }: { projectId: string }) {
-  const [cables, setCables] = useState<Cable[]>([]);
+type CablePanelProps = {
+  projectId: string;
+  initialCables: Cable[];
+};
+
+export default function CablePanel({
+  projectId,
+  initialCables,
+}: CablePanelProps) {
+  const [cables, setCables] = useState<Cable[]>(initialCables ?? []);
   const [name, setName] = useState("");
-  const [type, setType] = useState("BACKBONE");
+  const [cableType, setCableType] = useState("BACKBONE");
   const [fiberCount, setFiberCount] = useState("144");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -25,13 +33,17 @@ export default function CablePanel({ projectId }: { projectId: string }) {
       });
 
       const data = await res.json();
-      if (!res.ok || !data.ok) throw new Error(data.message);
+      if (!res.ok || !data.ok) throw new Error(data.message ?? "Failed to load cables");
 
       setCables(data.cables ?? []);
     } catch (e: any) {
-      setError(e.message);
+      setError(e.message ?? "Failed to load cables");
     }
   }
+
+  useEffect(() => {
+    setCables(initialCables ?? []);
+  }, [initialCables]);
 
   useEffect(() => {
     load();
@@ -49,18 +61,18 @@ export default function CablePanel({ projectId }: { projectId: string }) {
         body: JSON.stringify({
           projectId,
           name,
-          type,
+          cableType,
           fiberCount: Number(fiberCount),
         }),
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message);
+      if (!res.ok) throw new Error(data.message ?? "Failed to create cable");
 
       setName("");
       await load();
     } catch (e: any) {
-      setError(e.message);
+      setError(e.message ?? "Failed to create cable");
     } finally {
       setSaving(false);
     }
@@ -86,8 +98,8 @@ export default function CablePanel({ projectId }: { projectId: string }) {
         />
 
         <select
-          value={type}
-          onChange={(e) => setType(e.target.value)}
+          value={cableType}
+          onChange={(e) => setCableType(e.target.value)}
           className="rounded border p-2 bg-transparent"
         >
           <option>BACKBONE</option>
@@ -111,7 +123,7 @@ export default function CablePanel({ projectId }: { projectId: string }) {
         </button>
       </div>
 
-      {error && <p className="text-red-500 mt-2">{error}</p>}
+      {error && <p className="mt-2 text-red-500">{error}</p>}
 
       <div className="mt-4 space-y-2">
         {cables.map((c) => (
@@ -122,7 +134,7 @@ export default function CablePanel({ projectId }: { projectId: string }) {
             <div>
               <div>{c.name}</div>
               <div className="text-xs opacity-60">
-                {c.type} · {c.fiberCount}F
+                {c.cableType} · {c.fiberCount}F
               </div>
             </div>
 

@@ -44,6 +44,11 @@ type Summary = {
   counts: { nodes: number; cables: number; totalFibers: number };
 };
 
+type NodePanelProps = {
+  projectId: string;
+  initialNodes: Node[];
+};
+
 const NODE_TYPES: NodeType[] = [
   "CABINET",
   "HANDHOLE",
@@ -55,40 +60,36 @@ const NODE_TYPES: NodeType[] = [
 const CABLE_TYPES: CableType[] = ["BACKBONE", "SPUR", "DROP"];
 const FIBER_COUNTS = [12, 24, 48, 96, 144] as const;
 
-export default function NodePanel({ projectId }: { projectId: string }) {
-  // data
-  const [nodes, setNodes] = useState<Node[]>([]);
+export default function NodePanel({
+  projectId,
+  initialNodes,
+}: NodePanelProps) {
+  const [nodes, setNodes] = useState<Node[]>(initialNodes ?? []);
   const [cables, setCables] = useState<Cable[]>([]);
   const [counts, setCounts] = useState<Summary["counts"]>({
-    nodes: 0,
+    nodes: initialNodes?.length ?? 0,
     cables: 0,
     totalFibers: 0,
   });
 
-  // node create
   const [name, setName] = useState("");
   const [nodeType, setNodeType] = useState<NodeType>("CABINET");
   const [savingNode, setSavingNode] = useState(false);
 
-  // node edit
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
   const [editNodeName, setEditNodeName] = useState("");
   const [editNodeType, setEditNodeType] = useState<NodeType>("CABINET");
   const [savingNodeEdit, setSavingNodeEdit] = useState(false);
 
-  // cable create
   const [showCableUI, setShowCableUI] = useState(false);
   const [cableName, setCableName] = useState("");
   const [cableType, setCableType] = useState<CableType>("BACKBONE");
-  const [fiberCount, setFiberCount] = useState<(typeof FIBER_COUNTS)[number]>(
-    144
-  );
+  const [fiberCount, setFiberCount] = useState<(typeof FIBER_COUNTS)[number]>(144);
   const [fromNodeId, setFromNodeId] = useState("");
   const [toNodeId, setToNodeId] = useState("");
   const [routeNotes, setRouteNotes] = useState("");
   const [savingCable, setSavingCable] = useState(false);
 
-  // cable edit
   const [editingCableId, setEditingCableId] = useState<string | null>(null);
   const [editCableName, setEditCableName] = useState("");
   const [editCableType, setEditCableType] = useState<CableType>("BACKBONE");
@@ -97,16 +98,13 @@ export default function NodePanel({ projectId }: { projectId: string }) {
   const [editRouteNotes, setEditRouteNotes] = useState("");
   const [savingCableEdit, setSavingCableEdit] = useState(false);
 
-  // fiber autogen confirmation
   const [confirmAutogen, setConfirmAutogen] = useState(true);
 
-  // fiber viewer (inline)
   const [openCableId, setOpenCableId] = useState<string | null>(null);
   const [loadingFibers, setLoadingFibers] = useState(false);
   const [fibers, setFibers] = useState<Fiber[]>([]);
   const [error, setError] = useState("");
 
-  // live refresh
   const refreshMs = 3000;
   const timerRef = useRef<number | null>(null);
   const inflightRef = useRef(false);
@@ -162,6 +160,10 @@ export default function NodePanel({ projectId }: { projectId: string }) {
       inflightRef.current = false;
     }
   }
+
+  useEffect(() => {
+    setNodes(initialNodes ?? []);
+  }, [initialNodes]);
 
   useEffect(() => {
     loadSummary().catch(() => {});
